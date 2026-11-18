@@ -5,6 +5,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,3 +20,24 @@ jobs:
       - name: Container logs
         if: failure()
         run: docker logs utility-test || true
+      - name: Create a disposable Kubernetes cluster
+        run: |
+          curl --fail --location --output /tmp/kind https://kind.sigs.k8s.io/dl/v0.33.0/kind-linux-amd64
+          chmod +x /tmp/kind
+          /tmp/kind create cluster --name kubeops --image kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed --wait 3m
+          docker tag kubeops-utility:test kubeops-utility:v1
+          /tmp/kind load docker-image kubeops-utility:v1 --name kubeops
+      - name: Deploy and verify the Kubernetes workload
+        run: |
+          kubectl --context kind-kubeops apply -k k8s
+          kubectl --context kind-kubeops -n kubeops-demo rollout status deployment/kubeops-utility --timeout=90s
+          python scripts/kubernetes_smoke.py
+      - name: Kubernetes failure evidence
+        if: failure()
+        run: |
+          kubectl --context kind-kubeops -n kubeops-demo get pods,services -o wide || true
+          kubectl --context kind-kubeops -n kubeops-demo get events --sort-by=.lastTimestamp || true
+          kubectl --context kind-kubeops -n kubeops-demo logs deployment/kubeops-utility || true
+      - name: Delete the disposable cluster
+        if: always()
+        run: if [ -x /tmp/kind ]; then /tmp/kind delete cluster --name kubeops; fi
