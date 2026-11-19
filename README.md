@@ -6,7 +6,7 @@ A Kubernetes operations dashboard project, being developed in small working stag
 
 This first release contains the small application the dashboard will eventually deploy and inspect. It reports its version, hostname, optional Pod/node identity, and a configurable message. It also exposes health endpoints.
 
-Part 2 adds a local Kubernetes deployment for this service. The dashboard itself is not included yet.
+Part 2 adds a local Kubernetes deployment for this service. Part 3 adds its first read-only dashboard view.
 
 ### Run with Python
 
@@ -81,6 +81,23 @@ kubectl --context kind-kubeops -n kubeops-demo logs deployment/kubeops-utility
 
 Remove the demo resources with `kubectl --context kind-kubeops delete -k k8s`. This deletes the dedicated `kubeops-demo` namespace and everything inside it, so keep that namespace exclusive to this demo. Remove the disposable cluster with `kind delete cluster --name kubeops` when finished.
 
+## Part 3: read-only dashboard
+
+After completing the Part 2 setup, apply the updated manifests and start the local dashboard:
+
+```powershell
+kubectl --context kind-kubeops apply -k k8s
+python dashboard/main.py
+```
+
+Open http://127.0.0.1:8000/. It shows the image, ready/desired replicas, Service IP, and each Pod's phase, node, and restart count. Refresh the page to update the snapshot. Missing cluster access produces a helpful error instead of a blank page.
+
+This first view uses Python's standard library and kubectl, with no new Python dependencies. It binds only to localhost and accepts localhost Host headers. Cluster-provided text is HTML-escaped. It has no mutation endpoints, arbitrary commands, kubeconfig upload, or remote access option.
+
+Every Kubernetes read impersonates `system:serviceaccount:kubeops-demo:kubeops-viewer`. Its Role permits listing Pods and reading only the named demo Deployment and Service. It cannot change workloads or read Secrets. The local kind administrator credentials must allow impersonating this identity; these credentials remain on the host, so this is not a credential-isolated production deployment. Do not expose this development server publicly.
+
+CI checks the rendered page against a live cluster and verifies that the viewer cannot patch Deployments or read Secrets. Unit tests cover Pending Pods, escaped text, the restricted read command, and unavailable-cluster/Host handling.
+
 ## Next stage
 
-Add the first read-only dashboard view for inspecting this workload. Further operations will follow in small stages.
+Add more workload inspection details before introducing authenticated mutation controls.
