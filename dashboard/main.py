@@ -16,6 +16,34 @@ def read(*args):
     return json.loads(result.stdout)
 
 
+def pod_summary(pod):
+    status = pod.get("status") or {}
+    conditions = status.get("conditions") or []
+    readiness = next((c.get("status") for c in conditions if c.get("type") == "Ready"), "Unknown")
+    containers = status.get("containerStatuses") or []
+    issues = []
+    if status.get("reason"):
+        issues.append((status["reason"], status.get("message", "")))
+    for container in [*(status.get("initContainerStatuses") or []), *containers]:
+        state = container.get("state") or {}
+        failure = state.get("waiting") or state.get("terminated") or {}
+        if failure.get("reason") and failure["reason"] != "Completed":
+            issues.append((f"{container['name']}: {failure['reason']}", failure.get("message", "")))
+    if not issues:
+        issues = [(c["reason"], c.get("message", "")) for c in conditions if c.get("status") == "False" and c.get("reason")]
+    if pod["metadata"].get("deletionTimestamp"):
+        readiness, issues = "False", [("Terminating", "Pod deletion has been requested.")]
+    return {
+        "name": pod["metadata"]["name"],
+        "phase": status.get("phase", "Unknown"),
+        "ready": {"True": "Yes", "False": "No"}.get(readiness, "Unknown"),
+        "node": pod.get("spec", {}).get("nodeName", "Unscheduled"),
+        "restarts": sum(c.get("restartCount", 0) for c in containers),
+        "reason": "; ".join(reason for reason, _ in issues) or "No reported issue",
+        "message": "\n".join(message for _, message in issues if message),
+    }
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -25,25 +53,21 @@ def snapshot():
         "desired": deployment["spec"].get("replicas", 1),
         "ready": deployment.get("status", {}).get("readyReplicas", 0),
         "service": service["spec"].get("clusterIP", "Pending"),
-        "pods": [{
-            "name": p["metadata"]["name"],
-            "phase": p.get("status", {}).get("phase", "Unknown"),
-            "node": p.get("spec", {}).get("nodeName", "Unscheduled"),
-            "restarts": sum(c.get("restartCount", 0) for c in p.get("status", {}).get("containerStatuses", [])),
-        } for p in pods],
+        "pods": [pod_summary(p) for p in pods],
     }
 
 
 def page(data=None, error=None):
     rows = "" if data is None else "".join(
-        "<tr>" + "".join(f"<td>{escape(str(p[key]))}</td>" for key in ("name", "phase", "node", "restarts")) + "</tr>"
+        "<tr>" + "".join(f"<td>{escape(str(p[key]))}</td>" for key in ("name", "phase", "ready", "node", "restarts", "reason"))
+        + "</tr>" + (f'<tr><td colspan="6"><pre>{escape(p["message"])}</pre></td></tr>' if p["message"] else "")
         for p in data["pods"]
     )
     content = f'<p role="alert">{escape(error)}</p>' if error else (
         f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
         f"<p>ClusterIP: {escape(data['service'])}</p>"
-        '<table><thead><tr><th>Pod</th><th>Phase</th><th>Node</th><th>Restarts</th></tr></thead>'
-        f"<tbody>{rows or '<tr><td colspan=4>No Pods yet.</td></tr>'}</tbody></table>"
+        '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th></tr></thead>'
+        f"<tbody>{rows or '<tr><td colspan=6>No Pods yet.</td></tr>'}</tbody></table>"
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -51,7 +75,7 @@ def page(data=None, error=None):
 body{{font:16px system-ui;margin:3rem auto;padding:0 1rem;max-width:1000px;background:#f5f7fb;color:#18263a}}
 main{{background:white;padding:2rem;border:1px solid #dce2ec;border-radius:12px;overflow-x:auto}}
 table{{border-collapse:collapse;width:100%}}th,td{{padding:.7rem;text-align:left;border-bottom:1px solid #dce2ec}}
-a{{color:#1753ad}}p{{line-height:1.6}}
+a{{color:#1753ad}}p{{line-height:1.6}}pre{{white-space:pre-wrap;overflow-wrap:anywhere}}
 </style></head><body><main><h1>KubeOps Console</h1>
 <p>Read-only · kind-kubeops / kubeops-demo / kubeops-utility</p>
 <p><a href="/">Refresh workload</a></p>{content}

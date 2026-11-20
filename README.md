@@ -98,6 +98,14 @@ Every Kubernetes read impersonates `system:serviceaccount:kubeops-demo:kubeops-v
 
 CI checks the rendered page against a live cluster and verifies that the viewer cannot patch Deployments or read Secrets. Unit tests cover Pending Pods, escaped text, the restricted read command, and unavailable-cluster/Host handling.
 
+## Part 4: Pod readiness and diagnostics
+
+The dashboard now separates Pod phase from readiness: a `Running` Pod is not necessarily ready to serve traffic. The Ready column shows `Yes`, `No`, or `Unknown` from the Pod's Ready condition. Missing status is not treated as success.
+
+The Reason column shows Kubernetes-reported scheduling and current container/init-container issues, such as `Unschedulable`, `ImagePullBackOff`, `CrashLoopBackOff`, or `OOMKilled`, with their messages below the row. Pods being deleted are marked `Terminating`. These are reported statuses, not an automatic root-cause diagnosis. A previous container failure is not displayed as a current failure after the container recovers; the restart count remains visible.
+
+No permissions or dependencies were added. Messages remain HTML-escaped. Tests cover missing status, Running-but-unready Pods, image/crash/memory/init failures, scheduling failures, termination, recovered containers, and escaped messages. CI checks the expanded page on the existing live cluster.
+
 ## Next stage
 
-Add more workload inspection details before introducing authenticated mutation controls.
+Add bounded, read-only Pod logs before introducing authenticated mutation controls.
