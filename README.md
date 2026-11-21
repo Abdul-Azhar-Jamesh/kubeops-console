@@ -106,6 +106,14 @@ The Reason column shows Kubernetes-reported scheduling and current container/ini
 
 No permissions or dependencies were added. Messages remain HTML-escaped. Tests cover missing status, Running-but-unready Pods, image/crash/memory/init failures, scheduling failures, termination, recovered containers, and escaped messages. CI checks the expanded page on the existing live cluster.
 
+## Part 5: bounded Pod logs
+
+Click **Logs** beside a Pod to view its current `utility` container output. Each snapshot requests at most 200 lines and 65,536 bytes, with timestamps. Empty output and unavailable/replaced Pods have explicit messages. There is no live streaming or previous-container selection yet.
+
+Apply the updated manifests before restarting the dashboard: `kubectl --context kind-kubeops apply -k k8s`. The viewer now has Pod get/list and Pod-log get permissions in the dedicated demo namespace. It still cannot change workloads, execute commands in containers, or read Secrets. Kubernetes RBAC grants namespace-wide Pod-log reads; the application narrows selection to Pods matching `app=kubeops-utility`. Keep this namespace exclusive to the demo.
+
+The handler checks selection against the current demo Pod list before calling kubectl, uses a fixed container and limits, and displays output as escaped HTML. Logs are not saved by the dashboard. Logs can contain application data, so the dashboard remains localhost-only. Tests cover rejected selections, fixed limits, UTF-8 handling, escaped output, and unavailable logs; CI reads actual Pod logs using the viewer identity.
+
 ## Next stage
 
-Add bounded, read-only Pod logs before introducing authenticated mutation controls.
+Add related Kubernetes events to the read-only inspection view.

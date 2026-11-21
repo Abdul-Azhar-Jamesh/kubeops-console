@@ -4,6 +4,7 @@ import json
 import subprocess
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 KUBECTL = [
     "kubectl", "--context", "kind-kubeops", "--namespace", "kubeops-demo",
@@ -14,6 +15,21 @@ KUBECTL = [
 def read(*args):
     result = subprocess.run([*KUBECTL, "get", *args, "-o", "json"], capture_output=True, text=True, check=True, timeout=10)
     return json.loads(result.stdout)
+
+
+class PodNotFound(Exception):
+    pass
+
+
+def pod_logs(name):
+    pods = read("pods", "-l", "app=kubeops-utility")["items"]
+    if not any(p["metadata"]["name"] == name for p in pods):
+        raise PodNotFound("Demo Pod not found")
+    result = subprocess.run(
+        [*KUBECTL, "logs", f"pod/{name}", "--container=utility", "--tail=200", "--limit-bytes=65536", "--timestamps=true"],
+        capture_output=True, check=True, timeout=10,
+    )
+    return result.stdout[:65536].decode("utf-8", errors="replace")
 
 
 def pod_summary(pod):
@@ -57,18 +73,27 @@ def snapshot():
     }
 
 
-def page(data=None, error=None):
+def page(data=None, error=None, logs=None):
     rows = "" if data is None else "".join(
         "<tr>" + "".join(f"<td>{escape(str(p[key]))}</td>" for key in ("name", "phase", "ready", "node", "restarts", "reason"))
-        + "</tr>" + (f'<tr><td colspan="6"><pre>{escape(p["message"])}</pre></td></tr>' if p["message"] else "")
+        + f'<td><a href="/logs?{escape(urlencode({"pod": p["name"]}))}">Logs</a></td></tr>'
+        + (f'<tr><td colspan="7"><pre>{escape(p["message"])}</pre></td></tr>' if p["message"] else "")
         for p in data["pods"]
     )
-    content = f'<p role="alert">{escape(error)}</p>' if error else (
-        f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
-        f"<p>ClusterIP: {escape(data['service'])}</p>"
-        '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th></tr></thead>'
-        f"<tbody>{rows or '<tr><td colspan=6>No Pods yet.</td></tr>'}</tbody></table>"
-    )
+    if error:
+        content = f'<p role="alert">{escape(error)}</p>'
+    elif logs is not None:
+        content = (
+            f"<h2>Logs: {escape(logs[0])}</h2><p>Latest 200 lines, capped at 64 KiB. Current utility container only.</p>"
+            f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
+        )
+    else:
+        content = (
+            f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
+            f"<p>ClusterIP: {escape(data['service'])}</p>"
+            '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>Logs</th></tr></thead>'
+            f"<tbody>{rows or '<tr><td colspan=7>No Pods yet.</td></tr>'}</tbody></table>"
+        )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KubeOps Console</title><style>
@@ -87,13 +112,36 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Host") not in {"127.0.0.1:8000", "localhost:8000"}:
             self.send_error(403, "Localhost access only")
             return
-        if self.path != "/":
+        try:
+            route = urlsplit(self.path)
+        except ValueError:
+            self.send_error(400, "Invalid request path")
+            return
+        if route.path not in {"/", "/logs"}:
             self.send_error(404)
             return
         try:
-            body, status = page(snapshot()).encode(), 200
+            if route.path == "/logs":
+                try:
+                    query = parse_qs(route.query, keep_blank_values=True, strict_parsing=True, max_num_fields=1)
+                except ValueError:
+                    self.send_error(400, "Specify one demo Pod")
+                    return
+                if set(query) != {"pod"} or len(query["pod"]) != 1 or not query["pod"][0]:
+                    self.send_error(400, "Specify one demo Pod")
+                    return
+                name = query["pod"][0]
+                body = page(logs=(name, pod_logs(name))).encode()
+            else:
+                body = page(snapshot()).encode()
+            status = 200
+        except PodNotFound:
+            body, status = page(error="Demo Pod not found. Refresh the workload and select a current Pod.").encode(), 404
         except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
-            body = page(error="Cannot read the demo workload. Check kubectl, the kind-kubeops context, and apply -k k8s.").encode()
+            message = "Cannot read Pod logs. The container may not have started or the Pod may have been replaced." if route.path == "/logs" else (
+                "Cannot read the demo workload. Check kubectl, the kind-kubeops context, and apply -k k8s."
+            )
+            body = page(error=message).encode()
             status = 503
         self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
