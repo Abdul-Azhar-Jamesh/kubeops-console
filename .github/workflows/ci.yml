@@ -40,11 +40,25 @@ jobs:
           test "$(kubectl --context kind-kubeops -n kubeops-demo auth can-i get secrets --as=$viewer)" = no
           test "$(kubectl --context kind-kubeops -n kubeops-demo auth can-i get pods/log --as=$viewer)" = yes
           test "$(kubectl --context kind-kubeops -n kubeops-demo auth can-i create pods/exec --as=$viewer)" = no
+          test "$(kubectl --context kind-kubeops -n kubeops-demo auth can-i list events --as=$viewer)" = yes
+          test "$(kubectl --context kind-kubeops -n kubeops-demo auth can-i create events --as=$viewer)" = no
           python dashboard/main.py >dashboard.log 2>&1 &
           curl --fail --retry 10 --retry-all-errors --retry-delay 1 --retry-max-time 30 --max-time 25 --output /tmp/dashboard.html http://127.0.0.1:8000/
           python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text(); assert 'Ready replicas:' in p and 'kubeops-utility-' in p and 'kubeops-utility:v1' in p"
           python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text(); assert '<th>Ready</th>' in p and '<th>Reason</th>' in p"
           python -c "import urllib.request; from urllib.parse import urlencode; from dashboard.main import read; pods=read('pods','-l','app=kubeops-utility')['items']; name=next(p['metadata']['name'] for p in pods if not p['metadata'].get('deletionTimestamp')); html=urllib.request.urlopen('http://127.0.0.1:8000/logs?'+urlencode({'pod':name}),timeout=25).read().decode(); assert 'Latest 200 lines' in html and name in html"
+          python - <<'PY'
+          import json, subprocess, urllib.request
+          from dashboard.main import read
+          service = read('service', 'kubeops-utility')
+          for uid, reason in [(service['metadata']['uid'], 'DashboardSmokeRelated'), ('unrelated-uid', 'DashboardSmokeUnrelated')]:
+              event = {'apiVersion': 'v1', 'kind': 'Event', 'metadata': {'generateName': 'dashboard-smoke-', 'namespace': 'kubeops-demo'},
+                       'involvedObject': {'apiVersion': 'v1', 'kind': 'Service', 'namespace': 'kubeops-demo', 'name': 'kubeops-utility', 'uid': uid},
+                       'type': 'Normal', 'reason': reason, 'message': 'CI event visibility check', 'source': {'component': 'kubeops-ci'}}
+              subprocess.run(['kubectl', '--context', 'kind-kubeops', 'create', '-f', '-'], input=json.dumps(event), text=True, check=True, timeout=15)
+          html = urllib.request.urlopen('http://127.0.0.1:8000/', timeout=30).read().decode()
+          assert 'DashboardSmokeRelated' in html and 'DashboardSmokeUnrelated' not in html
+          PY
       - name: Kubernetes failure evidence
         if: failure()
         run: |

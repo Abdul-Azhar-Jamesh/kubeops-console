@@ -114,6 +114,14 @@ Apply the updated manifests before restarting the dashboard: `kubectl --context 
 
 The handler checks selection against the current demo Pod list before calling kubectl, uses a fixed container and limits, and displays output as escaped HTML. Logs are not saved by the dashboard. Logs can contain application data, so the dashboard remains localhost-only. Tests cover rejected selections, fixed limits, UTF-8 handling, escaped output, and unavailable logs; CI reads actual Pod logs using the viewer identity.
 
+## Part 6: related Kubernetes events
+
+The workload page now shows the latest 50 retained events for the current demo Deployment, Service, and Pods. Events are matched by resource UID, so unrelated objects and old objects with reused names are excluded. Each row includes type, object, reason, occurrence count, last-observed time, and a message capped at 2,000 characters. Messages are HTML-escaped.
+
+Reapply the manifests before restarting the dashboard: `kubectl --context kind-kubeops apply -k k8s`. The viewer gains only namespace-scoped event-list permissions. Kubernetes RBAC does not restrict this list by object UID; filtering happens in the application. No event creation or workload mutation is available through the dashboard.
+
+This is a snapshot of events Kubernetes still retains, not a durable audit history. Events for removed Pods and ReplicaSets are not included in this version. An empty state means no matching events were returned, not that the workload has never had a problem. The display is capped; the namespace event list is still fetched in full for this small demo.
+
 ## Next stage
 
-Add related Kubernetes events to the read-only inspection view.
+Show resource requests and limits alongside the workload inspection details.

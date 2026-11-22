@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from datetime import datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -60,6 +61,34 @@ def pod_summary(pod):
     }
 
 
+def related_events(resources):
+    names = {obj["metadata"]["uid"]: f"{kind}/{obj['metadata']['name']}"
+             for kind, obj in resources if obj.get("metadata", {}).get("uid")}
+    result = []
+    for event in read("events")["items"]:
+        reference = event.get("involvedObject") or event.get("regarding") or {}
+        if reference.get("uid") not in names:
+            continue
+        series = event.get("series") or {}
+        result.append({
+            "object": names[reference["uid"]],
+            "type": event.get("type", "Unknown"),
+            "reason": event.get("reason", "Unknown"),
+            "count": series.get("count") or event.get("count") or 1,
+            "time": series.get("lastObservedTime") or event.get("lastTimestamp") or event.get("eventTime")
+                    or event.get("metadata", {}).get("creationTimestamp") or "Unknown",
+            "message": (event.get("message") or event.get("note") or "")[:2000],
+        })
+
+    def observed(event):
+        try:
+            return datetime.fromisoformat(event["time"]).timestamp()
+        except (ValueError, OverflowError, OSError):
+            return 0
+
+    return sorted(result, key=observed, reverse=True)[:50]
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -70,6 +99,7 @@ def snapshot():
         "ready": deployment.get("status", {}).get("readyReplicas", 0),
         "service": service["spec"].get("clusterIP", "Pending"),
         "pods": [pod_summary(p) for p in pods],
+        "events": related_events([("Deployment", deployment), ("Service", service), *[("Pod", p) for p in pods]]),
     }
 
 
@@ -88,11 +118,18 @@ def page(data=None, error=None, logs=None):
             f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
         )
     else:
+        event_rows = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(event[key]))}</td>" for key in ("type", "object", "reason", "count", "time", "message"))
+            + "</tr>" for event in data.get("events", [])
+        )
         content = (
             f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
             f"<p>ClusterIP: {escape(data['service'])}</p>"
             '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>Logs</th></tr></thead>'
             f"<tbody>{rows or '<tr><td colspan=7>No Pods yet.</td></tr>'}</tbody></table>"
+            '<h2>Related events</h2><p>Latest 50 retained events for the current demo objects; messages capped at 2,000 characters.</p>'
+            '<table><thead><tr><th>Type</th><th>Object</th><th>Reason</th><th>Count</th><th>Last observed</th><th>Message</th></tr></thead>'
+            f"<tbody>{event_rows or '<tr><td colspan=6>No related events retained.</td></tr>'}</tbody></table>"
         )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
