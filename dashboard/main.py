@@ -89,6 +89,21 @@ def related_events(resources):
     return sorted(result, key=observed, reverse=True)[:50]
 
 
+def resource_rows(spec, source):
+    rows = []
+    for kind, containers in (("App", spec.get("containers") or []), ("Init", spec.get("initContainers") or [])):
+        for container in containers:
+            resources = container.get("resources") or {}
+            requests = resources.get("requests") or {}
+            limits = resources.get("limits") or {}
+            rows.append({
+                "source": source, "container": container.get("name", "Unknown"), "kind": kind,
+                "cpu_request": requests.get("cpu", "Not set"), "cpu_limit": limits.get("cpu", "Not set"),
+                "memory_request": requests.get("memory", "Not set"), "memory_limit": limits.get("memory", "Not set"),
+            })
+    return rows
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -100,6 +115,8 @@ def snapshot():
         "service": service["spec"].get("clusterIP", "Pending"),
         "pods": [pod_summary(p) for p in pods],
         "events": related_events([("Deployment", deployment), ("Service", service), *[("Pod", p) for p in pods]]),
+        "resources": resource_rows(deployment["spec"]["template"]["spec"], "Deployment template")
+                     + [row for p in pods for row in resource_rows(p.get("spec") or {}, f"Pod/{p['metadata']['name']}")],
     }
 
 
@@ -118,6 +135,11 @@ def page(data=None, error=None, logs=None):
             f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
         )
     else:
+        budgets = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(row[key]))}</td>" for key in (
+                "source", "container", "kind", "cpu_request", "cpu_limit", "memory_request", "memory_limit",
+            )) + "</tr>" for row in data.get("resources", [])
+        )
         event_rows = "".join(
             "<tr>" + "".join(f"<td>{escape(str(event[key]))}</td>" for key in ("type", "object", "reason", "count", "time", "message"))
             + "</tr>" for event in data.get("events", [])
@@ -127,6 +149,11 @@ def page(data=None, error=None, logs=None):
             f"<p>ClusterIP: {escape(data['service'])}</p>"
             '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>Logs</th></tr></thead>'
             f"<tbody>{rows or '<tr><td colspan=7>No Pods yet.</td></tr>'}</tbody></table>"
+            '<h2>Resource requests and limits</h2><p>Per-container configured budgets, not live usage or Pod totals. '
+            'Template and actual Pod values are shown separately; Not set means no value was returned.</p>'
+            '<table><thead><tr><th>Source</th><th>Container</th><th>Kind</th><th>CPU request</th><th>CPU limit</th>'
+            '<th>Memory request</th><th>Memory limit</th></tr></thead>'
+            f"<tbody>{budgets or '<tr><td colspan=7>No container resource configuration returned.</td></tr>'}</tbody></table>"
             '<h2>Related events</h2><p>Latest 50 retained events for the current demo objects; messages capped at 2,000 characters.</p>'
             '<table><thead><tr><th>Type</th><th>Object</th><th>Reason</th><th>Count</th><th>Last observed</th><th>Message</th></tr></thead>'
             f"<tbody>{event_rows or '<tr><td colspan=6>No related events retained.</td></tr>'}</tbody></table>"

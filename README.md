@@ -122,6 +122,12 @@ Reapply the manifests before restarting the dashboard: `kubectl --context kind-k
 
 This is a snapshot of events Kubernetes still retains, not a durable audit history. Events for removed Pods and ReplicaSets are not included in this version. An empty state means no matching events were returned, not that the workload has never had a problem. The display is capped; the namespace event list is still fetched in full for this small demo.
 
+## Part 7: resource requests and limits
+
+The workload page now shows CPU and memory requests and limits per application/init container. Deployment template settings and actual Pod specifications have separate rows, so admission defaults and rollout differences are not hidden. Quantity strings such as `100m`, `0.5`, and `64Mi` are preserved as Kubernetes returns them; missing values show `Not set`, not zero.
+
+These are configured per-container budgets, not measured consumption or aggregate Pod scheduling totals. No Metrics Server, new permissions, dependencies, or additional API reads are needed. All displayed values are HTML-escaped. Tests cover missing settings, multiple containers, init containers, quantity preservation, template/Pod differences, and escaped output. CI verifies the deployed demo's budgets in the rendered page.
+
 ## Next stage
 
-Show resource requests and limits alongside the workload inspection details.
+Show Kubernetes-reported Pod quality-of-service classes alongside the resource settings.
