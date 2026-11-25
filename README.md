@@ -128,6 +128,10 @@ The workload page now shows CPU and memory requests and limits per application/i
 
 These are configured per-container budgets, not measured consumption or aggregate Pod scheduling totals. No Metrics Server, new permissions, dependencies, or additional API reads are needed. All displayed values are HTML-escaped. Tests cover missing settings, multiple containers, init containers, quantity preservation, template/Pod differences, and escaped output. CI verifies the deployed demo's budgets in the rendered page.
 
+## Part 8: Pod quality of service
+
+The Pod table now displays the Kubernetes-reported `status.qosClass`: Guaranteed, Burstable, or BestEffort. Missing status shows Unknown. The dashboard does not infer a class from the Deployment template or treat it as a health rating. No extra API calls, permissions, or dependencies are required.
+
 ## Next stage
 
-Show Kubernetes-reported Pod quality-of-service classes alongside the resource settings.
+Show Deployment rollout conditions in the inspection view.

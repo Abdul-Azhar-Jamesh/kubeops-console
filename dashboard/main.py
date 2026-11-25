@@ -55,6 +55,7 @@ def pod_summary(pod):
         "phase": status.get("phase", "Unknown"),
         "ready": {"True": "Yes", "False": "No"}.get(readiness, "Unknown"),
         "node": pod.get("spec", {}).get("nodeName", "Unscheduled"),
+        "qos": status.get("qosClass") or "Unknown",
         "restarts": sum(c.get("restartCount", 0) for c in containers),
         "reason": "; ".join(reason for reason, _ in issues) or "No reported issue",
         "message": "\n".join(message for _, message in issues if message),
@@ -123,8 +124,9 @@ def snapshot():
 def page(data=None, error=None, logs=None):
     rows = "" if data is None else "".join(
         "<tr>" + "".join(f"<td>{escape(str(p[key]))}</td>" for key in ("name", "phase", "ready", "node", "restarts", "reason"))
+        + f'<td>{escape(str(p.get("qos", "Unknown")))}</td>'
         + f'<td><a href="/logs?{escape(urlencode({"pod": p["name"]}))}">Logs</a></td></tr>'
-        + (f'<tr><td colspan="7"><pre>{escape(p["message"])}</pre></td></tr>' if p["message"] else "")
+        + (f'<tr><td colspan="8"><pre>{escape(p["message"])}</pre></td></tr>' if p["message"] else "")
         for p in data["pods"]
     )
     if error:
@@ -147,8 +149,8 @@ def page(data=None, error=None, logs=None):
         content = (
             f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
             f"<p>ClusterIP: {escape(data['service'])}</p>"
-            '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>Logs</th></tr></thead>'
-            f"<tbody>{rows or '<tr><td colspan=7>No Pods yet.</td></tr>'}</tbody></table>"
+            '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>QoS</th><th>Logs</th></tr></thead>'
+            f"<tbody>{rows or '<tr><td colspan=8>No Pods yet.</td></tr>'}</tbody></table>"
             '<h2>Resource requests and limits</h2><p>Per-container configured budgets, not live usage or Pod totals. '
             'Template and actual Pod values are shown separately; Not set means no value was returned.</p>'
             '<table><thead><tr><th>Source</th><th>Container</th><th>Kind</th><th>CPU request</th><th>CPU limit</th>'
