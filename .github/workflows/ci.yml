@@ -45,7 +45,7 @@ jobs:
           python dashboard/main.py >dashboard.log 2>&1 &
           curl --fail --retry 10 --retry-all-errors --retry-delay 1 --retry-max-time 30 --max-time 25 --output /tmp/dashboard.html http://127.0.0.1:8000/
           python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text(); assert 'Ready replicas:' in p and 'kubeops-utility-' in p and 'kubeops-utility:v1' in p"
-          python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text(); assert '<th>Ready</th>' in p and '<th>Reason</th>' in p and '<th>QoS</th>' in p and 'Burstable' in p"
+          python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text(); assert 'Deployment rollout conditions' in p and 'NewReplicaSetAvailable' in p and '<th>Ready</th>' in p and '<th>Reason</th>' in p and '<th>QoS</th>' in p and 'Burstable' in p"
           python -c "from pathlib import Path; p=Path('/tmp/dashboard.html').read_text().split('<h2>Resource requests and limits</h2>')[1].split('<h2>Related events</h2>')[0]; assert 'Deployment template' in p and all(v in p for v in ('100m','250m','64Mi','128Mi'))"
           python -c "import urllib.request; from urllib.parse import urlencode; from dashboard.main import read; pods=read('pods','-l','app=kubeops-utility')['items']; name=next(p['metadata']['name'] for p in pods if not p['metadata'].get('deletionTimestamp')); html=urllib.request.urlopen('http://127.0.0.1:8000/logs?'+urlencode({'pod':name}),timeout=25).read().decode(); assert 'Latest 200 lines' in html and name in html"
           python - <<'PY'

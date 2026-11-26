@@ -105,6 +105,20 @@ def resource_rows(spec, source):
     return rows
 
 
+def rollout_summary(deployment):
+    status = deployment.get("status") or {}
+    generation = deployment.get("metadata", {}).get("generation")
+    observed = status.get("observedGeneration")
+    return {
+        "generation": generation if generation is not None else "Unknown",
+        "observed": observed if observed is not None else "Unknown",
+        "fresh": "Unknown" if generation is None or observed is None else ("Yes" if observed >= generation else "No"),
+        "conditions": [{key: condition.get(key) or "Unknown" for key in (
+            "type", "status", "reason", "message", "lastTransitionTime",
+        )} for condition in status.get("conditions") or []],
+    }
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -113,6 +127,7 @@ def snapshot():
         "image": deployment["spec"]["template"]["spec"]["containers"][0]["image"],
         "desired": deployment["spec"].get("replicas", 1),
         "ready": deployment.get("status", {}).get("readyReplicas", 0),
+        "rollout": rollout_summary(deployment),
         "service": service["spec"].get("clusterIP", "Pending"),
         "pods": [pod_summary(p) for p in pods],
         "events": related_events([("Deployment", deployment), ("Service", service), *[("Pod", p) for p in pods]]),
@@ -137,6 +152,12 @@ def page(data=None, error=None, logs=None):
             f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
         )
     else:
+        rollout = data.get("rollout") or {}
+        conditions = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(condition[key]))}</td>" for key in (
+                "type", "status", "reason", "message", "lastTransitionTime",
+            )) + "</tr>" for condition in rollout.get("conditions", [])
+        )
         budgets = "".join(
             "<tr>" + "".join(f"<td>{escape(str(row[key]))}</td>" for key in (
                 "source", "container", "kind", "cpu_request", "cpu_limit", "memory_request", "memory_limit",
@@ -149,6 +170,13 @@ def page(data=None, error=None, logs=None):
         content = (
             f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
             f"<p>ClusterIP: {escape(data['service'])}</p>"
+            '<h2>Deployment rollout conditions</h2>'
+            f"<p>Generation: {escape(str(rollout.get('generation', 'Unknown')))}; "
+            f"observed: {escape(str(rollout.get('observed', 'Unknown')))}; "
+            f"controller observed current generation: {escape(str(rollout.get('fresh', 'Unknown')))}.</p>"
+            '<p>Reported conditions may describe an older generation. Progressing=True alone does not mean rollout complete.</p>'
+            '<table><thead><tr><th>Condition</th><th>Status</th><th>Reason</th><th>Message</th><th>Last transition</th></tr></thead>'
+            f"<tbody>{conditions or '<tr><td colspan=5>No rollout conditions reported.</td></tr>'}</tbody></table>"
             '<table><thead><tr><th>Pod</th><th>Phase</th><th>Ready</th><th>Node</th><th>Restarts</th><th>Reason</th><th>QoS</th><th>Logs</th></tr></thead>'
             f"<tbody>{rows or '<tr><td colspan=8>No Pods yet.</td></tr>'}</tbody></table>"
             '<h2>Resource requests and limits</h2><p>Per-container configured budgets, not live usage or Pod totals. '

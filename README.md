@@ -132,6 +132,10 @@ These are configured per-container budgets, not measured consumption or aggregat
 
 The Pod table now displays the Kubernetes-reported `status.qosClass`: Guaranteed, Burstable, or BestEffort. Missing status shows Unknown. The dashboard does not infer a class from the Deployment template or treat it as a health rating. No extra API calls, permissions, or dependencies are required.
 
+## Part 9: Deployment rollout conditions
+
+The page now shows reported Deployment conditions, including status, reason, message, and transition time. Desired and observed generations are displayed separately, with Unknown for missing status. A stale controller observation is marked No; conditions are not interpreted as a guarantee of completed rollout. Messages are HTML-escaped. No permissions, dependencies, or API calls were added.
+
 ## Next stage
 
-Show Deployment rollout conditions in the inspection view.
+Inspect Service ports and selectors in the read-only view.
