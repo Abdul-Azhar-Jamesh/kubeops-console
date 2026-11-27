@@ -119,6 +119,20 @@ def rollout_summary(deployment):
     }
 
 
+def service_summary(service):
+    spec = service.get("spec") or {}
+    return {
+        "type": spec.get("type") or "Unknown",
+        "selectors": ", ".join(f"{key}={value}" for key, value in sorted((spec.get("selector") or {}).items())) or "None",
+        "ports": [{
+            "name": port.get("name") or "Unnamed",
+            "protocol": port.get("protocol") or "TCP",
+            "port": port.get("port", "Unknown"),
+            "target": port.get("targetPort", port.get("port", "Unknown")),
+        } for port in spec.get("ports") or []],
+    }
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -129,6 +143,7 @@ def snapshot():
         "ready": deployment.get("status", {}).get("readyReplicas", 0),
         "rollout": rollout_summary(deployment),
         "service": service["spec"].get("clusterIP", "Pending"),
+        "service_details": service_summary(service),
         "pods": [pod_summary(p) for p in pods],
         "events": related_events([("Deployment", deployment), ("Service", service), *[("Pod", p) for p in pods]]),
         "resources": resource_rows(deployment["spec"]["template"]["spec"], "Deployment template")
@@ -152,6 +167,11 @@ def page(data=None, error=None, logs=None):
             f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
         )
     else:
+        service = data.get("service_details") or {}
+        ports = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(port[key]))}</td>" for key in ("name", "protocol", "port", "target"))
+            + "</tr>" for port in service.get("ports", [])
+        )
         rollout = data.get("rollout") or {}
         conditions = "".join(
             "<tr>" + "".join(f"<td>{escape(str(condition[key]))}</td>" for key in (
@@ -170,6 +190,11 @@ def page(data=None, error=None, logs=None):
         content = (
             f"<p>Image: {escape(data['image'])}</p><p>Ready replicas: {data['ready']} / {data['desired']}</p>"
             f"<p>ClusterIP: {escape(data['service'])}</p>"
+            '<h2>Service ports and selectors</h2>'
+            f"<p>Type: {escape(str(service.get('type', 'Unknown')))}; selectors: {escape(str(service.get('selectors', 'None')))}.</p>"
+            '<p>Configuration only: matching selectors do not prove endpoint readiness or connectivity.</p>'
+            '<table><thead><tr><th>Name</th><th>Protocol</th><th>Service port</th><th>Target port</th></tr></thead>'
+            f"<tbody>{ports or '<tr><td colspan=4>No Service ports returned.</td></tr>'}</tbody></table>"
             '<h2>Deployment rollout conditions</h2>'
             f"<p>Generation: {escape(str(rollout.get('generation', 'Unknown')))}; "
             f"observed: {escape(str(rollout.get('observed', 'Unknown')))}; "

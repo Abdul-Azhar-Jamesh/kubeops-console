@@ -136,6 +136,10 @@ The Pod table now displays the Kubernetes-reported `status.qosClass`: Guaranteed
 
 The page now shows reported Deployment conditions, including status, reason, message, and transition time. Desired and observed generations are displayed separately, with Unknown for missing status. A stale controller observation is marked No; conditions are not interpreted as a guarantee of completed rollout. Messages are HTML-escaped. No permissions, dependencies, or API calls were added.
 
+## Part 10: Service ports and selectors
+
+The workload page now shows the Service type, sorted selectors, and each port with its protocol and numeric or named target. Missing selectors show None. These settings do not establish endpoint readiness or successful connectivity. No additional API reads, permissions, or dependencies were added.
+
 ## Next stage
 
-Inspect Service ports and selectors in the read-only view.
+Inspect EndpointSlice readiness for the demo Service.
