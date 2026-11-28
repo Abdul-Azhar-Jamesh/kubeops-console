@@ -9,6 +9,9 @@ kind: Role
 metadata:
   name: kubeops-viewer
 rules:
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [list]
   - apiGroups: [apps]
     resources: [deployments]
     resourceNames: [kubeops-utility]

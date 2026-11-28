@@ -133,6 +133,25 @@ def service_summary(service):
     }
 
 
+def endpoint_rows(service, slices):
+    rows = []
+    for item in slices:
+        owners = item.get("metadata", {}).get("ownerReferences") or []
+        uid = service.get("metadata", {}).get("uid")
+        if not uid or not any(owner.get("uid") == uid and owner.get("kind") == "Service" for owner in owners):
+            continue
+        ports = ", ".join(f"{p.get('port') or 'Unresolved'}/{p.get('protocol', 'TCP')}" for p in item.get("ports") or []) or "None"
+        for endpoint in item.get("endpoints") or []:
+            conditions = endpoint.get("conditions") or {}
+            rows.append({
+                "slice": item["metadata"]["name"], "addresses": ", ".join(endpoint.get("addresses") or []),
+                "family": item.get("addressType", "Unknown"), "ports": ports,
+                **{key: {True: "Yes", False: "No"}.get(conditions.get(key), "Unknown")
+                   for key in ("ready", "serving", "terminating")},
+            })
+    return rows
+
+
 def snapshot():
     deployment = read("deployment", "kubeops-utility")
     pods = read("pods", "-l", "app=kubeops-utility")["items"]
@@ -148,6 +167,7 @@ def snapshot():
         "events": related_events([("Deployment", deployment), ("Service", service), *[("Pod", p) for p in pods]]),
         "resources": resource_rows(deployment["spec"]["template"]["spec"], "Deployment template")
                      + [row for p in pods for row in resource_rows(p.get("spec") or {}, f"Pod/{p['metadata']['name']}")],
+        "endpoints": endpoint_rows(service, read("endpointslices.discovery.k8s.io", "-l", "kubernetes.io/service-name=kubeops-utility")["items"]),
     }
 
 
@@ -167,6 +187,11 @@ def page(data=None, error=None, logs=None):
             f"<pre>{escape(logs[1]) if logs[1] else 'No log output available.'}</pre>"
         )
     else:
+        endpoints = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(endpoint[key]))}</td>" for key in (
+                "slice", "addresses", "family", "ports", "ready", "serving", "terminating",
+            )) + "</tr>" for endpoint in data.get("endpoints", [])
+        )
         service = data.get("service_details") or {}
         ports = "".join(
             "<tr>" + "".join(f"<td>{escape(str(port[key]))}</td>" for key in ("name", "protocol", "port", "target"))
@@ -195,6 +220,9 @@ def page(data=None, error=None, logs=None):
             '<p>Configuration only: matching selectors do not prove endpoint readiness or connectivity.</p>'
             '<table><thead><tr><th>Name</th><th>Protocol</th><th>Service port</th><th>Target port</th></tr></thead>'
             f"<tbody>{ports or '<tr><td colspan=4>No Service ports returned.</td></tr>'}</tbody></table>"
+            '<h2>Service endpoints</h2><p>Reported EndpointSlice conditions, not a connectivity test. Missing conditions show Unknown.</p>'
+            '<table><thead><tr><th>Slice</th><th>Addresses</th><th>Family</th><th>Ports</th><th>Ready</th><th>Serving</th><th>Terminating</th></tr></thead>'
+            f"<tbody>{endpoints or '<tr><td colspan=7>No endpoints reported for the current Service.</td></tr>'}</tbody></table>"
             '<h2>Deployment rollout conditions</h2>'
             f"<p>Generation: {escape(str(rollout.get('generation', 'Unknown')))}; "
             f"observed: {escape(str(rollout.get('observed', 'Unknown')))}; "

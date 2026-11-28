@@ -30,14 +30,14 @@ class ResourceTests(unittest.TestCase):
             "name": "app", "resources": {"requests": {"cpu": "100m"}},
         }]}}
         with patch("dashboard.main.read", side_effect=[
-            {"spec": {"template": {"spec": template}}}, {"items": [pod]}, {"spec": {"clusterIP": "10.0.0.1"}}, {"items": []},
+            {"spec": {"template": {"spec": template}}}, {"items": [pod]}, {"spec": {"clusterIP": "10.0.0.1"}}, {"items": []}, {"items": []}, {"items": []},
         ]) as read:
             rows = snapshot()["resources"]
         self.assertEqual(rows[0]["source"], "Deployment template")
         self.assertEqual(rows[0]["cpu_request"], "Not set")
         self.assertEqual(rows[1]["source"], "Pod/web-1")
         self.assertEqual(rows[1]["cpu_request"], "100m")
-        self.assertEqual(read.call_count, 4)
+        self.assertEqual(read.call_count, 5)
 
     def test_resource_display_is_escaped_and_explains_its_scope(self):
         rows = resource_rows({"containers": [{"name": '<script>bad()</script>'}]}, "Pod/web")

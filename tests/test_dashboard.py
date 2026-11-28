@@ -14,7 +14,7 @@ class DashboardTests(unittest.TestCase):
             {"spec": {"replicas": 1, "template": {"spec": {"containers": [{"image": "test:v1"}]}}}},
             {"items": [{"metadata": {"name": "pending"}, "spec": {}, "status": {"phase": "Pending"}}]},
             {"spec": {"clusterIP": "10.96.0.1"}},
-            {"items": []},
+            {"items": []}, {"items": []}, {"items": []},
         ]):
             data = snapshot()
         self.assertEqual(data["ready"], 0)

@@ -140,6 +140,10 @@ The page now shows reported Deployment conditions, including status, reason, mes
 
 The workload page now shows the Service type, sorted selectors, and each port with its protocol and numeric or named target. Missing selectors show None. These settings do not establish endpoint readiness or successful connectivity. No additional API reads, permissions, or dependencies were added.
 
+## Part 11: Service endpoint inspection
+
+Day 1 of the 10-day completion plan adds EndpointSlice addresses, address family, ports, and ready/serving/terminating conditions. Slices are selected by Service label and checked against the current Service owner UID. Missing conditions show Unknown; endpoint conditions do not prove network connectivity. Reapply `kubectl --context kind-kubeops apply -k k8s` for the new namespace-scoped EndpointSlice list permission.
+
 ## Next stage
 
-Inspect EndpointSlice readiness for the demo Service.
+Day 2: authentication and restricted operator permissions.
